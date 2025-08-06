@@ -23,26 +23,32 @@ emd = eemd.EMD
 emd.extrema_detection = 'parabol'
 
 #%% 读取时间序列
-df = pd.read_excel(r"D:\SCIENCE\大气物理\气象指数\gmst\GMSL.xlsx", header=0, index_col=0, names=["GMSL"])
+#df = pd.read_excel(r"D:\SCIENCE\大气物理\气象指数\gmst\OHC处理.xlsx", header=0, index_col=0, names=["OHC"])
+
+df = pd.read_csv(r"D:\SCIENCE\大气物理\气象指数\gmst\avarangeof6.csv",index_col=0,names=["GMST"],skiprows=1)
 # 正确解析年份索引
-date = pd.to_datetime(df.index, format='%Y')
+date = pd.to_datetime(df.index, format='%Y-%m-%d')
 df_name = df.columns[0]
-df = df['GMSL'].to_numpy()
+df = df['GMST'].to_numpy()
 
 # 数据预处理
-df_mean = np.mean(df)
-df_std = np.std(df)
-df = (df - df_mean) / df_std  # 标准化
+
 
 print(f"数据时间范围: {date[0]} 到 {date[-1]}")
 print(f"数据点数: {len(date)}")
 print(f"原始数据范围: [{df.min():.3f}, {df.max():.3f}]")
-
+print(date[:5])
 #%% 参数设置
 t0 = date[0].year
 dt = 1
 N = df.size
 t = np.arange(0, N) * dt + t0
+#%% 去趋势
+p=np.polyfit(t - t0,df,1)
+df_notrend=df-np.polyval(p,t - t0)
+std=df_notrend.std()
+var=std**2
+df_norm=df_notrend/std
 
 #%% 不去趋势
 df_norm = df.copy()
