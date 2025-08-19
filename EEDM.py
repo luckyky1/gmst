@@ -25,10 +25,11 @@ emd.extrema_detection = 'parabol'
 #%% 读取时间序列
 #df = pd.read_excel(r"D:\SCIENCE\大气物理\气象指数\gmst\OHC处理.xlsx", header=0, index_col=0, names=["OHC"])
 
-df = pd.read_csv(r"D:\SCIENCE\大气物理\气象指数\gmst\avarangeof6.csv",index_col=0,names=["GMST"],skiprows=1)
+df = pd.read_csv("./data/gmst.csv",index_col=0,names=["GMST",'GMST_losse'],header=None)
 # 正确解析年份索引
 date = pd.to_datetime(df.index, format='%Y-%m-%d')
 df_name = df.columns[0]
+print(df_name)
 df = df['GMST'].to_numpy()
 
 # 数据预处理
@@ -160,7 +161,7 @@ for i, period in enumerate(average_periods):
     print(f"eIMF {i + 1} 的代表周期是: {period:.2f} 年")
 
 #%% 减去趋势
-df_hat = df - (eIMFs[0])
+df_hat = df - (eIMFs[0]+eIMFs[1])
 
 #%% 最终绘图 - 时间序列对比
 print(f"绘图时间范围: {date[0]} 到 {date[-1]}")
@@ -216,4 +217,7 @@ plt.tight_layout()
 plt.show()
 
 print("EEMD分析完成！")
+# %%
+gmst_byEEMD = pd.DataFrame(df_hat,index=date,columns=[df_name])
+gmst_byEEMD.to_csv('./data/gmst_byEEMD.csv',header=None)
 # %%
