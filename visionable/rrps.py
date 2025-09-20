@@ -64,9 +64,9 @@ plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans']
 
 plt.rcParams['grid.linestyle'] = '--'
-# --- 3. 创建子图 ---
+# --- 2. 创建子图 ---
 # 创建一个2行1列的图，并共享X轴，这对于比较时间序列非常重要
-fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(24, 9), sharex=True)
+fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(24, 9), sharex=True)
 
 
 # --- 4. 绘制第一个子图 (6-month average) ---
@@ -103,22 +103,22 @@ axes[1].axhline(threshold_12, lw=1.5, color="crimson", linestyle='--')
 axes[1].set_title("Analysis by ONI Temperature Anomaly", fontsize=14)
 axes[1].set_ylabel("Temperature Anomaly (°C)", fontsize=12)
 axes[1].legend(loc='upper left')
-axes[2].plot(d_gmst_loose.index, d_gmst_loose, label='by loose_GMST', color='cornflowerblue', linewidth=1.5)
-axes[2].scatter(over_loose.index, over_loose, marker="o", s=50, color="crimson", 
-                label=f'Exceeds Threshold ({threshold_loose:.2f})', 
-                edgecolor='black', linewidth=0.5, zorder=5)
-axes[2].axhline(threshold_loose, lw=1.5, color="crimson", linestyle='--')
-axes[2].set_title("Analysis by loose_GMST Temperature Anomaly", fontsize=14)
-axes[2].set_ylabel("Temperature Anomaly (°C)", fontsize=12)
-axes[2].legend(loc='upper left')
-axes[3].plot(d_gmst.index, d_gmst, label='by GMST', color='cornflowerblue', linewidth=1.5)
-axes[3].scatter(over.index, over, marker="o", s=50, color="crimson", 
+# axes[2].plot(d_gmst_loose.index, d_gmst_loose, label='by loose_GMST', color='cornflowerblue', linewidth=1.5)
+# axes[2].scatter(over_loose.index, over_loose, marker="o", s=50, color="crimson", 
+#                 label=f'Exceeds Threshold ({threshold_loose:.2f})', 
+#                 edgecolor='black', linewidth=0.5, zorder=5)
+# axes[2].axhline(threshold_loose, lw=1.5, color="crimson", linestyle='--')
+# axes[2].set_title("Analysis by loose_GMST Temperature Anomaly", fontsize=14)
+# axes[2].set_ylabel("Temperature Anomaly (°C)", fontsize=12)
+# axes[2].legend(loc='upper left')
+axes[2].plot(d_gmst.index, d_gmst, label='by GMST', color='cornflowerblue', linewidth=1.5)
+axes[2].scatter(over.index, over, marker="o", s=50, color="crimson", 
                 label=f'Exceeds Threshold ({threshold:.2f})', 
                 edgecolor='black', linewidth=0.5, zorder=5)
-axes[3].axhline(threshold, lw=1.5, color="crimson", linestyle='--')
-axes[3].set_title("Analysis by GMST Temperature Anomaly", fontsize=14)
-axes[3].set_ylabel("Temperature Anomaly (°C)", fontsize=12)
-axes[3].legend(loc='upper left')
+axes[2].axhline(threshold, lw=1.5, color="crimson", linestyle='--')
+axes[2].set_title("Analysis by GMST Temperature Anomaly", fontsize=14)
+axes[2].set_ylabel("Temperature Anomaly (°C)", fontsize=12)
+axes[2].legend(loc='upper left')
 # --- 6. 美化整个图表 ---
 # 为整个图表添加一个主标题
 fig.suptitle('Time Series Analysis of Global Mean Surface Temperature (GMST)', fontsize=18, fontweight='bold')
