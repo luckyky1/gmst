@@ -2,137 +2,276 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-k= 1.36 #标准差倍数
-#%% 数据读取
-GMST_EEMD = pd.read_csv("../data/OHC_byEEMD.csv",header=0,index_col=0)
-GMST_EEMD.index = pd.to_datetime(GMST_EEMD.index)
-GMST_ONI = pd.read_csv("../data/OHC_bynoi.csv",header=0,index_col=0)
-GMST_ONI.index = pd.to_datetime(GMST_ONI.index)
-GMST = pd.read_excel("../data/OHC.xlsx",header=None,index_col=0,names=['OHC','loose_OHC'])
-GMST.index = pd.to_datetime(GMST.index)
+#%%
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
-gmst_6 = GMST_EEMD
-gmst_12 = GMST_ONI
-GMST_loose = GMST.iloc[:,1]
-GMST_loose.index = pd.to_datetime(GMST_loose.index)
-GMST = GMST.iloc[:,0]
-GMST.index = pd.to_datetime(GMST.index)
-GMST.shape
-#%% 数据差分定义
-def ddf(df):
-    # 兼容(n,)或(n,1)的DataFrame或Series输入
-    if isinstance(df, pd.Series):
-        arr = df.values
-    elif isinstance(df, pd.DataFrame):
-        if df.shape[1] == 1:
-            arr = df.iloc[:,0].values
-        else:
-            raise ValueError("只支持一列的DataFrame或Series")
-    else:
-        raise TypeError("输入必须为DataFrame或Series")
-    arr = arr.reshape(-1)  # 保证为(n,)形状
-    m = len(arr)
-    n = np.zeros(m-1)
-    for i in range(m-1):
-        n[i] = -arr[i] + arr[i+1]
-    daten = df.index[1:]
-    s = pd.DataFrame(n, columns=['dgmst'], index=daten)
-    return s
+# --- 1. 全局设置 ---
+k = 1.28
 
-d_gmst_12 = ddf(gmst_12)
-d_gmst_6 = ddf(gmst_6)
-d_gmst = ddf(GMST)
-d_gmst_loose = ddf(GMST_loose)
-# %%
-std_6 = d_gmst_6.std().item()
-std_12 = d_gmst_12.std().item()
-std = d_gmst.std().item()
-std_loose = d_gmst_loose.std().item()
-threshold_6 = k*std_6
-threshold_12 =k*std_12
-threshold = k*std
-threshold_loose = k*std_loose  
+# --- 2. 数据加载与准备 (逻辑不变) ---
+try:
+    ohc_eemd = pd.read_csv("../data/OHC_byEEMD.csv", header=0, index_col=0, parse_dates=True)
+    ohc_oni = pd.read_csv("../data/OHC_bynoi.csv", header=0, index_col=0, parse_dates=True)
+    ohc_raw_temp = pd.read_excel("../data/OHC.xlsx", header=None, index_col=0, usecols=[0, 1])
+    ohc_raw_temp.columns = ['OHC']
+    ohc_raw = ohc_raw_temp
+    ohc_raw.index = pd.to_datetime(ohc_raw.index)
+except FileNotFoundError as e:
+    print(f"数据文件加载失败: {e}")
+    exit()
 
-over_6=d_gmst_6[d_gmst_6['dgmst']>=threshold_6 ]### df[df]会出现mask
-over_12=d_gmst_12[d_gmst_12['dgmst']>=threshold_12]
-over=d_gmst[d_gmst['dgmst']>=threshold]
-over_loose=d_gmst_loose[d_gmst_loose['dgmst']>=threshold_loose]
-# %%
-plt.style.use('seaborn-v0_8-whitegrid')
-# 设置全局字体，确保在不同系统上表现一致
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans']
+# --- 3. 数据差分 (逻辑不变) ---
+def calculate_difference(series: pd.Series) -> pd.DataFrame:
+    diff_series = series.diff().dropna()
+    return pd.DataFrame(diff_series.values, columns=['dOHC'], index=diff_series.index)
 
-plt.rcParams['grid.linestyle'] = '--'
-# --- 3. 创建子图 ---
-# 创建一个2行1列的图，并共享X轴，这对于比较时间序列非常重要
-fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(24, 9), sharex=True)
+d_ohc_eemd = calculate_difference(ohc_eemd.iloc[:, 0])
+d_ohc_oni = calculate_difference(ohc_oni.iloc[:, 0])
+d_ohc_raw = calculate_difference(ohc_raw['OHC'])
 
+# --- 4. 识别急速上升期 (逻辑不变) ---
+def find_rapid_rise_points(df, k_multiplier):
+    std_dev = df.iloc[:, 0].std()
+    threshold = k_multiplier * std_dev
+    exceed_points = df[df.iloc[:, 0] >= threshold]
+    return exceed_points, threshold
 
-# --- 4. 绘制第一个子图 (6-month average) ---
-# 绘制主数据线，使用沉稳的蓝色
-axes[0].plot(d_gmst_6.index, d_gmst_6, label='by EEMD_have_trend', color='cornflowerblue', linewidth=1.5)
+over_eemd, threshold_eemd = find_rapid_rise_points(d_ohc_eemd, k)
+over_oni, threshold_oni = find_rapid_rise_points(d_ohc_oni, k)
+over_raw, threshold_raw = find_rapid_rise_points(d_ohc_raw, k)
 
-# 绘制超过阈值的散点，使用醒目的红色，并添加黑色描边使其更清晰
-axes[0].scatter(over_6.index, over_6, marker="o", s=50, color="crimson", 
-                label=f'Exceeds Threshold ({threshold_6:.2f})', 
-                edgecolor='black', linewidth=0.5, zorder=5) # zorder确保点在最上层
+# --- 5. 分析数据 (逻辑不变) ---
+set_eemd = {ts.strftime('%Y-%m') for ts in over_eemd.index}
+set_oni = {ts.strftime('%Y-%m') for ts in over_oni.index}
+set_raw = {ts.strftime('%Y-%m') for ts in over_raw.index}
+common_dates_str = sorted(list(set_eemd.intersection(set_oni, set_raw)))
+common_dates_ts = [pd.to_datetime(d) for d in common_dates_str]
+# (省略打印输出)
 
-# 绘制阈值参考线，使用虚线样式
-axes[0].axhline(threshold_6, lw=1.5, color="crimson", linestyle='--')
+# --- 6. 科研级可视化 ---
 
-# 设置子图标题和Y轴标签
-axes[0].set_title("Analysis by EEMD Temperature Anomaly", fontsize=14)
-axes[0].set_ylabel(r" $10^{22}$ J", fontsize=12)
-axes[0].legend(loc='upper left')
+# --- 【字体修复】 ---
+# 优先使用支持中文的字体（如'SimHei'黑体），将英文字体作为备选。
+# 这样可以确保在有中文的环境下，图表能被正确渲染。
+# 注意：如果您的系统是macOS，可能需要将'SimHei'改为'PingFang SC'；
+# 如果是Linux，可能需要改为'WenQuanYi Micro Hei'。
+plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial', 'Helvetica'] 
+plt.rcParams['axes.unicode_minus'] = False # 确保负号可以正常显示
+# --- 修复结束 ---
 
+# 【配色方案】
+colors = {
+    'eemd': '#3B75AF',  # 沉稳蓝
+    'oni': '#4E9C81',   # 青翠绿
+    'raw': '#CD6607',   # 暖橙色
+    'highlight': '#FDB813', # 醒目黄
+    'marker': '#C00000' # 强调红
+}
 
-# --- 5. 绘制第二个子图 (12-month average) ---
-# 绘制主数据线，使用稳重的绿色
-axes[1].plot(d_gmst_12.index, d_gmst_12, label='by ONI', color='seagreen', linewidth=1.5)
+# 创建画布
+fig = plt.figure(figsize=(18, 10))
+gs = gridspec.GridSpec(3, 1, hspace=0.05) 
 
-# 绘制超过阈值的散点
-axes[1].scatter(over_12.index, over_12, marker="o", s=50, color="crimson", 
-                label=f'Exceeds Threshold ({threshold_12:.2f})', 
-                edgecolor='black', linewidth=0.5, zorder=5)
+# 创建共享X轴的子图
+ax1 = plt.subplot(gs[0])
+ax2 = plt.subplot(gs[1], sharex=ax1)
+ax3 = plt.subplot(gs[2], sharex=ax1)
+axes = [ax1, ax2, ax3]
 
-# 绘制阈值参考线
-axes[1].axhline(threshold_12, lw=1.5, color="crimson", linestyle='--')
+# 定义数据和绘图参数
+plot_params = {
+    'A) EEMD处理后OHC': {
+        'ax': ax1, 'data': d_ohc_eemd, 'over_points': over_eemd, 
+        'threshold': threshold_eemd, 'color': colors['eemd']
+    },
+    'B) ONI影响校正后OHC': {
+        'ax': ax2, 'data': d_ohc_oni, 'over_points': over_oni, 
+        'threshold': threshold_oni, 'color': colors['oni']
+    },
+    'C) 原始OHC': {
+        'ax': ax3, 'data': d_ohc_raw, 'over_points': over_raw, 
+        'threshold': threshold_raw, 'color': colors['raw']
+    }
+}
 
-# 设置子图标题和Y轴标签
-axes[1].set_title("Analysis by ONI Temperature Anomaly", fontsize=14)
-axes[1].set_ylabel(r" $10^{22}$ J", fontsize=12)
-axes[1].legend(loc='upper left')
-axes[2].plot(d_gmst_loose.index, d_gmst_loose, label='by loose_GMST', color='cornflowerblue', linewidth=1.5)
-axes[2].scatter(over_loose.index, over_loose, marker="o", s=50, color="crimson", 
-                label=f'Exceeds Threshold ({threshold_loose:.2f})', 
-                edgecolor='black', linewidth=0.5, zorder=5)
-axes[2].axhline(threshold_loose, lw=1.5, color="crimson", linestyle='--')
-axes[2].set_title("Analysis by loose_GMST Temperature Anomaly", fontsize=14)
-axes[2].set_ylabel(r" $10^{22}$ J", fontsize=12)
-axes[2].legend(loc='upper left')
-axes[3].plot(d_gmst.index, d_gmst, label='by GMST', color='cornflowerblue', linewidth=1.5)
-axes[3].scatter(over.index, over, marker="o", s=50, color="crimson", 
-                label=f'Exceeds Threshold ({threshold:.2f})', 
-                edgecolor='black', linewidth=0.5, zorder=5)
-axes[3].axhline(threshold, lw=1.5, color="crimson", linestyle='--')
-axes[3].set_title("Analysis by GMST Temperature Anomaly", fontsize=14)
-axes[3].set_ylabel(r" $10^{22}$ J", fontsize=12)
-axes[3].legend(loc='upper left')
-# --- 6. 美化整个图表 ---
-# 为整个图表添加一个主标题
-fig.suptitle('Time Series Analysis of OHC', fontsize=18, fontweight='bold')
+# 循环绘制
+for title, params in plot_params.items():
+    ax = params['ax']
+    data = params['data']
+    over_points = params['over_points']
+    threshold = params['threshold']
+    color = params['color']
 
-# 因为共享了X轴，所以为整个图表添加一个X轴标签即可
-fig.supxlabel('Year', fontsize=12)
+    ax.fill_between(data.index, data.iloc[:,0], 0, color=color, alpha=0.1)
+    ax.plot(data.index, data, color=color, linewidth=1.5)
+    
+    ax.axhline(threshold, lw=1.2, color='gray', linestyle=':')
+    ax.scatter(over_points.index, over_points, s=50, color=colors['marker'], 
+               edgecolor='white', linewidth=0.5, zorder=5)
 
-# 自动调整布局，防止标题和标签重叠
-# rect参数为suptitle留出空间
-plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    for date in common_dates_ts:
+        ax.axvspan(date - pd.DateOffset(months=6), date + pd.DateOffset(months=6), 
+                   color=colors['highlight'], alpha=0.4, zorder=0, edgecolor='none')
 
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('gray')
+    ax.spines['bottom'].set_color('gray')
+    
+    ax.set_ylabel(r"变化率 ($10^{22}$ J/月)", fontsize=12)
+    ax.tick_params(axis='both', labelsize=11, color='gray')
+    ax.grid(axis='y', linestyle='--', alpha=0.5)
 
-# --- 7. 显示图像 ---
+    ax.text(0.02, 0.95, f'{title}\n识别出 {len(over_points)} 个事件', 
+            transform=ax.transAxes, fontsize=14, verticalalignment='top',
+            bbox=dict(boxstyle='round,pad=0.4', fc='white', alpha=0.6, ec='none'))
+
+plt.setp(ax1.get_xticklabels(), visible=False)
+plt.setp(ax2.get_xticklabels(), visible=False)
+
+ax3.set_xlabel('年份', fontsize=14)
+ax3.tick_params(axis='x', rotation=0)
+
+legend_elements = [
+    Patch(facecolor=colors['highlight'], alpha=0.6, label=f'所有方法共同识别的年份 ({len(common_dates_ts)}个)'),
+    Line2D([0], [0], marker='o', color='w', label='识别出的急速上升期',
+           markerfacecolor=colors['marker'], markeredgecolor='white', markersize=8),
+    Line2D([0], [0], color='gray', lw=1.5, linestyle=':', label='识别阈值 (k=1.28σ)'),
+]
+fig.legend(handles=legend_elements, loc='lower center', ncol=3, 
+           bbox_to_anchor=(0.5, -0.02), fontsize=12, frameon=False)
+
+fig.suptitle('不同方法下OHC“急速上升期”的对比分析', fontsize=24, fontweight='bold', y=1.02)
+fig.text(0.5, 0.96, '三种方法在识别短期剧烈增温事件上的共性与差异', 
+         ha='center', fontsize=16, color='gray')
+
+plt.tight_layout(rect=[0, 0.05, 1, 0.95])
 plt.show()
 
+# %%
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib_venn import venn3, venn3_circles
+# --- 【关键修复】从matplotlib正确导入patheffects模块 ---
+import matplotlib.patheffects as path_effects
+# --- 修复结束 ---
+
+# --- 1-4. 数据加载、处理与识别 (与上一版代码完全相同) ---
+
+# --- 1. 全局设置 ---
+k = 1.28
+
+# --- 2. 数据加载与准备 ---
+try:
+    ohc_eemd = pd.read_csv("../data/OHC_byEEMD.csv", header=0, index_col=0, parse_dates=True)
+    ohc_oni = pd.read_csv("../data/OHC_bynoi.csv", header=0, index_col=0, parse_dates=True)
+    ohc_raw_temp = pd.read_excel("../data/OHC.xlsx", header=None, index_col=0, usecols=[0, 1])
+    ohc_raw_temp.columns = ['OHC']
+    ohc_raw = ohc_raw_temp
+    ohc_raw.index = pd.to_datetime(ohc_raw.index)
+except FileNotFoundError as e:
+    print(f"数据文件加载失败: {e}")
+    exit()
+
+# --- 3. 数据差分 ---
+def calculate_difference(series: pd.Series) -> pd.DataFrame:
+    diff_series = series.diff().dropna()
+    return pd.DataFrame(diff_series.values, columns=['dOHC'], index=diff_series.index)
+
+d_ohc_eemd = calculate_difference(ohc_eemd.iloc[:, 0])
+d_ohc_oni = calculate_difference(ohc_oni.iloc[:, 0])
+d_ohc_raw = calculate_difference(ohc_raw['OHC'])
+
+# --- 4. 识别急速上升期 ---
+def find_rapid_rise_points(df, k_multiplier):
+    std_dev = df.iloc[:, 0].std()
+    threshold = k_multiplier * std_dev
+    exceed_points = df[df.iloc[:, 0] >= threshold]
+    return exceed_points, threshold
+
+over_eemd, _ = find_rapid_rise_points(d_ohc_eemd, k)
+over_oni, _ = find_rapid_rise_points(d_ohc_oni, k)
+over_raw, _ = find_rapid_rise_points(d_ohc_raw, k)
+
+
+# --- 5. 维恩图数据准备 (逻辑不变) ---
+set_eemd = set(over_eemd.index.strftime('%Y-%m'))
+set_oni = set(over_oni.index.strftime('%Y-%m'))
+set_raw = set(over_raw.index.strftime('%Y-%m'))
+
+subsets = (
+    len(set_eemd - set_oni - set_raw),
+    len(set_oni - set_eemd - set_raw),
+    len((set_eemd & set_oni) - set_raw),
+    len(set_raw - set_eemd - set_oni),
+    len((set_eemd & set_raw) - set_oni),
+    len((set_oni & set_raw) - set_eemd),
+    len(set_eemd & set_oni & set_raw)
+)
+# (省略打印输出)
+
+# --- 6. 科研级维恩图可视化 ---
+
+# 【字体设置】
+plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial', 'Helvetica']
+plt.rcParams['axes.unicode_minus'] = False
+
+# 【配色方案】
+colors = {
+    'eemd': '#3B75AF',
+    'oni': '#4E9C81',
+    'raw': '#CD6607',
+}
+
+# 创建画布
+plt.figure(figsize=(12, 12))
+ax = plt.gca()
+
+# 绘制维恩图
+v = venn3(subsets=subsets, 
+          set_labels=('EEMD 处理后 OHC', 'ONI 影响校正后 OHC', '原始 OHC'),
+          set_colors=(colors['eemd'], colors['oni'], colors['raw']),
+          alpha=0.8)
+
+# 【样式优化】
+for text in v.set_labels:
+    if text:
+        text.set_fontsize(16)
+        text.set_fontweight('bold')
+
+for text in v.subset_labels:
+    if text:
+        text.set_fontsize(18)
+        text.set_fontweight('bold')
+        text.set_color('white')
+        # --- 【关键修复】使用正确导入的 path_effects ---
+        plt.setp(text, path_effects=[
+            path_effects.withStroke(linewidth=1.5, foreground='black')])
+        # --- 修复结束 ---
+
+c = venn3_circles(subsets=subsets, linestyle='solid', linewidth=1.5, color='white')
+for circle in c:
+    # --- 【关键修复】使用正确导入的 path_effects ---
+    circle.set_path_effects([path_effects.withSimplePatchShadow(offset=(2,-2), alpha=0.3)])
+    # --- 修复结束 ---
+
+# 添加总标题和副标题
+plt.title('三种方法识别“急速上升期”的重叠与差异', 
+          fontsize=24, fontweight='bold', pad=40)
+ax.text(0.5, 1.05, '维恩图量化分析三种时间序列处理方法的共识度', 
+        ha='center', va='center', transform=ax.transAxes, 
+        fontsize=16, color='gray')
+
+plt.show()
+
+# %%
+common_dates_ts_OHC = list(common_dates_ts)
+common_dates_ts_OHC
 
 # %%
