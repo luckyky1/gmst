@@ -7,7 +7,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 #%%
 # --- 1. 全局设置 ---
-k = 1.36  # 根据您的脚本，GMSL使用1.36作为标准差倍数
+k = 1.28  # 根据您的脚本，GMSL使用1.36作为标准差倍数
 
 # --- 2. 数据加载与准备 ---
 # 使用更清晰的变量名 (gmsl_...)
